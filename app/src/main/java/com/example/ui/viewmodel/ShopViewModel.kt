@@ -10,6 +10,7 @@ import com.example.sync.GoogleSheetSyncManager
 import com.example.sync.SheetSyncStatus
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import java.util.Calendar
 import java.util.UUID
 
 enum class AppScreen {
@@ -111,6 +112,19 @@ class ShopViewModel(application: Application) : AndroidViewModel(application) {
     private val _topSellingItems = MutableStateFlow<List<TopSellingItem>>(emptyList())
     val topSellingItems: StateFlow<List<TopSellingItem>> = _topSellingItems.asStateFlow()
 
+    // Date-wise Sales Ledger (What I Sold)
+    private val _selectedSalesDate = MutableStateFlow(System.currentTimeMillis())
+    val selectedSalesDate: StateFlow<Long> = _selectedSalesDate.asStateFlow()
+
+    private val _dateSalesSummary = MutableStateFlow<DateSalesSummary?>(null)
+    val dateSalesSummary: StateFlow<DateSalesSummary?> = _dateSalesSummary.asStateFlow()
+
+    private val _isDateSalesLoading = MutableStateFlow(false)
+    val isDateSalesLoading: StateFlow<Boolean> = _isDateSalesLoading.asStateFlow()
+
+    private val _reportsTab = MutableStateFlow(0) // 0: What I Sold (Daily Sales), 1: Business Analytics
+    val reportsTab: StateFlow<Int> = _reportsTab.asStateFlow()
+
     // Sync status
     val syncStatus: StateFlow<SheetSyncStatus> = syncManager.syncStatus
 
@@ -173,6 +187,7 @@ class ShopViewModel(application: Application) : AndroidViewModel(application) {
             _todaySales.value = repository.getTodaySales()
             _stockValuation.value = repository.getStockValuation()
             syncManager.updatePendingCount()
+            loadSalesForDate(_selectedSalesDate.value)
         }
     }
 
@@ -183,6 +198,56 @@ class ShopViewModel(application: Application) : AndroidViewModel(application) {
             _profitReport.value = repository.getProfitReport()
             _stockValuation.value = repository.getStockValuation()
             _topSellingItems.value = repository.getTopSellingItems(10)
+            loadSalesForDate(_selectedSalesDate.value)
+        }
+    }
+
+    fun setReportsTab(tab: Int) {
+        _reportsTab.value = tab
+    }
+
+    fun openSalesByDate(dateMillis: Long = System.currentTimeMillis()) {
+        _reportsTab.value = 0
+        selectSalesDate(dateMillis)
+        _currentScreen.value = AppScreen.REPORTS
+    }
+
+    fun selectSalesDate(timestamp: Long) {
+        _selectedSalesDate.value = timestamp
+        loadSalesForDate(timestamp)
+    }
+
+    fun changeSalesDateByDays(days: Int) {
+        val cal = Calendar.getInstance().apply {
+            timeInMillis = _selectedSalesDate.value
+            add(Calendar.DAY_OF_YEAR, days)
+        }
+        selectSalesDate(cal.timeInMillis)
+    }
+
+    fun selectTodaySales() {
+        selectSalesDate(System.currentTimeMillis())
+    }
+
+    fun selectYesterdaySales() {
+        val cal = Calendar.getInstance().apply {
+            timeInMillis = System.currentTimeMillis()
+            add(Calendar.DAY_OF_YEAR, -1)
+        }
+        selectSalesDate(cal.timeInMillis)
+    }
+
+    fun loadSalesForDate(timestamp: Long = _selectedSalesDate.value) {
+        viewModelScope.launch {
+            _isDateSalesLoading.value = true
+            try {
+                val summary = repository.getSalesForDate(timestamp)
+                _dateSalesSummary.value = summary
+            } catch (e: Exception) {
+                e.printStackTrace()
+            } finally {
+                _isDateSalesLoading.value = false
+            }
         }
     }
 
@@ -258,6 +323,7 @@ class ShopViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             repository.addStockItem(name, unit, openingQty, purchasePrice, sellingPrice, lowStockThreshold)
             refreshDashboardMetrics()
+            syncManager.triggerRealtimeSync()
             showMessage("Item added to stock")
         }
     }
@@ -266,6 +332,7 @@ class ShopViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             repository.updateStockItem(item)
             refreshDashboardMetrics()
+            syncManager.triggerRealtimeSync()
             showMessage("Stock item updated")
         }
     }
@@ -274,6 +341,7 @@ class ShopViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             repository.restockItem(stockItemId, qty, purchasePrice, supplier)
             refreshDashboardMetrics()
+            syncManager.triggerRealtimeSync()
             showMessage("Stock replenished (+${qty})")
         }
     }
@@ -282,6 +350,7 @@ class ShopViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             repository.adjustStock(stockItemId, qtyChange, reason)
             refreshDashboardMetrics()
+            syncManager.triggerRealtimeSync()
             showMessage("Stock adjusted (${qtyChange})")
         }
     }
@@ -290,6 +359,7 @@ class ShopViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             repository.archiveStockItem(stockItemId)
             refreshDashboardMetrics()
+            syncManager.triggerRealtimeSync()
             showMessage("Item archived")
         }
     }
@@ -298,6 +368,7 @@ class ShopViewModel(application: Application) : AndroidViewModel(application) {
     fun addCustomer(name: String, phone: String, initialDue: Double = 0.0) {
         viewModelScope.launch {
             repository.addCustomer(name, phone, initialDue)
+            syncManager.triggerRealtimeSync()
             showMessage("Customer added to Khata")
         }
     }
@@ -311,6 +382,7 @@ class ShopViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             repository.recordKhataPayment(customerId, amount, note)
             refreshDashboardMetrics()
+            syncManager.triggerRealtimeSync()
             showMessage("Payment of ₹$amount recorded")
         }
     }
@@ -319,6 +391,7 @@ class ShopViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             repository.recordKhataCredit(customerId, amount, note)
             refreshDashboardMetrics()
+            syncManager.triggerRealtimeSync()
             showMessage("Credit of ₹$amount recorded")
         }
     }
@@ -353,9 +426,42 @@ class ShopViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun setDraftCustomerManual(name: String, phone: String) {
-        _draftCustomer.value = null
-        _draftCustomerName.value = name
-        _draftCustomerPhone.value = phone
+        viewModelScope.launch {
+            val trimmedName = name.trim()
+            val trimmedPhone = phone.trim()
+            if (trimmedName.isBlank() || trimmedName.equals("Walk-in Customer", ignoreCase = true)) {
+                setDraftCustomer(null)
+                return@launch
+            }
+            val existing = repository.allCustomersFlow.first().find {
+                it.name.equals(trimmedName, ignoreCase = true) ||
+                    (trimmedPhone.isNotBlank() && it.phone == trimmedPhone)
+            }
+            val target = existing ?: repository.addCustomer(trimmedName, trimmedPhone, 0.0)
+            setDraftCustomer(target)
+        }
+    }
+
+    fun setOrCreateCreditCustomer(name: String, phone: String, onDone: () -> Unit = {}) {
+        viewModelScope.launch {
+            val trimmedName = name.trim()
+            val trimmedPhone = phone.trim()
+            if (trimmedName.isBlank() || trimmedName.equals("Walk-in Customer", ignoreCase = true)) {
+                showMessage("Please enter customer name for credit sale")
+                return@launch
+            }
+
+            val existing = repository.allCustomersFlow.first().find {
+                it.name.equals(trimmedName, ignoreCase = true) ||
+                    (trimmedPhone.isNotBlank() && it.phone == trimmedPhone)
+            }
+            val target = existing ?: repository.addCustomer(trimmedName, trimmedPhone, 0.0)
+            setDraftCustomer(target)
+            _draftPaymentMode.value = "credit"
+            syncManager.triggerRealtimeSync()
+            showMessage("Customer linked for Credit: ${target.name}")
+            onDone()
+        }
     }
 
     fun setDraftPaymentMode(mode: String) {
@@ -394,6 +500,29 @@ class ShopViewModel(application: Application) : AndroidViewModel(application) {
                 )
             )
         }
+        _draftItems.value = current
+    }
+
+    fun addDraftItemCustom(
+        name: String,
+        unit: String,
+        qty: Double,
+        price: Double,
+        purchasePrice: Double = 0.0
+    ) {
+        val current = _draftItems.value.toMutableList()
+        val generatedId = UUID.randomUUID().toString()
+        current.add(
+            DraftBillItem(
+                stockItemId = generatedId,
+                itemName = name.trim(),
+                unit = unit,
+                availableQty = 0.0,
+                qty = qty,
+                pricePerUnit = price,
+                purchasePrice = purchasePrice
+            )
+        )
         _draftItems.value = current
     }
 
@@ -494,6 +623,7 @@ class ShopViewModel(application: Application) : AndroidViewModel(application) {
 
             repository.createBill(bill, billItems)
             refreshDashboardMetrics()
+            syncManager.triggerRealtimeSync()
             _selectedBillId.value = billId
             _selectedBill.value = bill
             _selectedBillItems.value = billItems
@@ -521,6 +651,7 @@ class ShopViewModel(application: Application) : AndroidViewModel(application) {
             _selectedBill.value = updatedBill
             _selectedBillItems.value = items
             refreshDashboardMetrics()
+            syncManager.triggerRealtimeSync()
             showMessage("Bill #${bill.billNumber} voided and stock restored")
         }
     }

@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -295,14 +296,18 @@ fun StockItemRowCard(
     onArchive: () -> Unit
 ) {
     val isLow = item.currentQty <= item.lowStockThreshold
+    val isOutOfStock = item.currentQty <= 0.0
 
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .testTag("stock_item_${item.id.take(6)}"),
         shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+        colors = CardDefaults.cardColors(
+            containerColor = if (isLow) Color(0xFFFFF5F5) else Color.White
+        ),
+        border = if (isLow) BorderStroke(1.5.dp, DangerRed.copy(alpha = 0.85f)) else BorderStroke(1.dp, Color(0xFFE2E8F0)),
+        elevation = CardDefaults.cardElevation(defaultElevation = if (isLow) 3.dp else 1.dp)
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
             Row(
@@ -312,15 +317,28 @@ fun StockItemRowCard(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (isLow) {
+                            Icon(
+                                imageVector = Icons.Default.Warning,
+                                contentDescription = "Low Stock Alert",
+                                tint = DangerRed,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                        }
                         Text(
                             text = item.name,
                             fontWeight = FontWeight.Bold,
                             fontSize = 16.sp,
-                            color = Color.Black
+                            color = if (isLow) Color(0xFF7F1D1D) else Color.Black
                         )
                         if (isLow) {
                             Spacer(modifier = Modifier.width(8.dp))
-                            StatusBadge(text = "LOW STOCK", bgColor = DangerRedBg, textColor = DangerRed)
+                            StatusBadge(
+                                text = if (isOutOfStock) "OUT OF STOCK" else "LOW STOCK",
+                                bgColor = DangerRedBg,
+                                textColor = DangerRed
+                            )
                         }
                     }
                     Spacer(modifier = Modifier.height(4.dp))
@@ -334,22 +352,34 @@ fun StockItemRowCard(
                 // Current Qty Display
                 val qtyStr = if (item.currentQty % 1.0 == 0.0) item.currentQty.toInt().toString() else "%.2f".format(item.currentQty)
                 Column(horizontalAlignment = Alignment.End) {
-                    Text(
-                        text = "$qtyStr ${item.unit}",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = if (isLow) DangerRed else SuccessGreen
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (isLow) {
+                            Icon(
+                                imageVector = Icons.Default.TrendingDown,
+                                contentDescription = null,
+                                tint = DangerRed,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(3.dp))
+                        }
+                        Text(
+                            text = "$qtyStr ${item.unit}",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isLow) DangerRed else SuccessGreen
+                        )
+                    }
                     Text(
                         text = "Threshold: ${item.lowStockThreshold} ${item.unit}",
                         style = MaterialTheme.typography.labelSmall,
-                        color = Color.Gray
+                        fontWeight = if (isLow) FontWeight.SemiBold else FontWeight.Normal,
+                        color = if (isLow) DangerRed else Color.Gray
                     )
                 }
             }
 
             Spacer(modifier = Modifier.height(10.dp))
-            HorizontalDivider()
+            HorizontalDivider(color = if (isLow) DangerRed.copy(alpha = 0.2f) else Color(0xFFE2E8F0))
             Spacer(modifier = Modifier.height(8.dp))
 
             // Action Buttons Row
@@ -368,11 +398,24 @@ fun StockItemRowCard(
 
                 FilledTonalButton(
                     onClick = onRestock,
-                    colors = ButtonDefaults.filledTonalButtonColors(containerColor = Color(0xFFE8EAF6))
+                    colors = ButtonDefaults.filledTonalButtonColors(
+                        containerColor = if (isLow) DangerRed else Color(0xFFE8EAF6),
+                        contentColor = if (isLow) Color.White else BrandNavy
+                    )
                 ) {
-                    Icon(Icons.Default.AddShoppingCart, contentDescription = null, tint = BrandNavy, modifier = Modifier.size(16.dp))
+                    Icon(
+                        Icons.Default.AddShoppingCart,
+                        contentDescription = null,
+                        tint = if (isLow) Color.White else BrandNavy,
+                        modifier = Modifier.size(16.dp)
+                    )
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("Restock", color = BrandNavy, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    Text(
+                        "Restock",
+                        color = if (isLow) Color.White else BrandNavy,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.sp
+                    )
                 }
 
                 IconButton(onClick = onEdit, modifier = Modifier.size(32.dp)) {
@@ -408,7 +451,7 @@ fun AddOrEditStockItemDialog(
         ) {
             Column(modifier = Modifier.padding(18.dp)) {
                 Text(
-                    text = if (existingItem == null) "Add Stock Item / नया सामान" else "Edit Stock Item",
+                    text = if (existingItem == null) LocaleStrings.get("add_stock_item") else LocaleStrings.get("edit_stock_item"),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = BrandNavy
@@ -486,8 +529,11 @@ fun AddOrEditStockItemDialog(
                 OutlinedTextField(
                     value = lowStockThreshold,
                     onValueChange = { lowStockThreshold = it },
-                    label = { Text("Low Stock Alert Threshold") },
-                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Low Stock Alert Threshold ($unit)") },
+                    supportingText = { Text("Highlights product in red when quantity drops below this threshold") },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("stock_threshold_input"),
                     singleLine = true,
                     colors = dukanTextFieldColors(),
                     textStyle = LocalTextStyle.current.copy(color = Color(0xFF0F172A), fontWeight = FontWeight.Medium),

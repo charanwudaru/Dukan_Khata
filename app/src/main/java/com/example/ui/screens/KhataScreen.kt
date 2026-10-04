@@ -123,7 +123,7 @@ fun KhataScreen(
                     ) {
                         Column {
                             Text(
-                                text = "Total Pending Market Dues / कुल बाक़ी",
+                                text = LocaleStrings.get("market_dues", lang),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = Color.Gray
                             )
@@ -188,6 +188,7 @@ fun KhataScreen(
                 items(filtered) { customer ->
                     CustomerKhataRowCard(
                         customer = customer,
+                        lang = lang,
                         onClick = { viewModel.selectCustomer(customer.id) },
                         onSendReminder = {
                             sendWhatsAppReminder(context, customer, shopTitle, lang)
@@ -200,6 +201,7 @@ fun KhataScreen(
 
     if (showAddCustomerDialog) {
         AddCustomerDialog(
+            lang = lang,
             onDismiss = { showAddCustomerDialog = false },
             onConfirm = { name, phone, initialDue ->
                 viewModel.addCustomer(name, phone, initialDue)
@@ -212,6 +214,7 @@ fun KhataScreen(
 @Composable
 fun CustomerKhataRowCard(
     customer: Customer,
+    lang: String = "en",
     onClick: () -> Unit,
     onSendReminder: () -> Unit
 ) {
@@ -278,7 +281,7 @@ fun CustomerKhataRowCard(
                         color = if (hasDues) DangerRed else SuccessGreen
                     )
                     Text(
-                        text = if (hasDues) "Due / बाक़ी" else "Settled / चुकता",
+                        text = if (hasDues) LocaleStrings.get("due", lang) else LocaleStrings.get("settled", lang),
                         style = MaterialTheme.typography.labelSmall,
                         color = if (hasDues) DangerRed else SuccessGreen
                     )
@@ -480,7 +483,7 @@ fun KhataDetailScreen(
             // Entries List
             item {
                 Text(
-                    text = "Khata Ledger Entries / खाता विवरण (${entries.size})",
+                    text = "${LocaleStrings.get("khata_entries", lang)} (${entries.size})",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = Color.Black
@@ -514,7 +517,7 @@ fun KhataDetailScreen(
 
     if (showPaymentDialog) {
         RecordEntryDialog(
-            title = "Payment Received / पैसे मिले (जमा)",
+            title = LocaleStrings.get("record_payment", lang),
             confirmButtonColor = SuccessGreen,
             onDismiss = { showPaymentDialog = false },
             onConfirm = { amount, note ->
@@ -526,7 +529,7 @@ fun KhataDetailScreen(
 
     if (showCreditDialog) {
         RecordEntryDialog(
-            title = "Credit Given / सामान दिया (उधार)",
+            title = LocaleStrings.get("record_credit", lang),
             confirmButtonColor = DangerRed,
             onDismiss = { showCreditDialog = false },
             onConfirm = { amount, note ->
@@ -595,6 +598,7 @@ fun KhataEntryCard(entry: KhataEntry) {
 
 @Composable
 fun AddCustomerDialog(
+    lang: String = "en",
     onDismiss: () -> Unit,
     onConfirm: (String, String, Double) -> Unit
 ) {
@@ -610,7 +614,7 @@ fun AddCustomerDialog(
         ) {
             Column(modifier = Modifier.padding(18.dp)) {
                 Text(
-                    text = "Add Customer / नया ग्राहक",
+                    text = LocaleStrings.get("add_customer", lang),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = BrandNavy

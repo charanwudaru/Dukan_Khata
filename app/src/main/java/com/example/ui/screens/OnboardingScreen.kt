@@ -103,13 +103,13 @@ fun OnboardingScreen(
 
             Spacer(modifier = Modifier.height(14.dp))
             Text(
-                text = if (step == 1) "Welcome to Dukan Khata!" else "Data Setup / डेटा सेटअप",
+                text = if (step == 1) LocaleStrings.get("app_name", lang) else LocaleStrings.get("data_setup", lang),
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
                 color = BrandNavy
             )
             Text(
-                text = if (step == 1) "100% Offline Billing & Ledger for your shop" else "Start fresh or restore from existing Google Sheet backup",
+                text = if (step == 1) LocaleStrings.get("tagline", lang) else LocaleStrings.get("restore_backup", lang),
                 style = MaterialTheme.typography.bodyMedium,
                 color = Color.Gray,
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center
@@ -125,7 +125,7 @@ fun OnboardingScreen(
                 ) {
                     Column(modifier = Modifier.padding(18.dp)) {
                         Text(
-                            text = "Step 1: Shop Information / दुकान विवरण",
+                            text = LocaleStrings.get("shop_info", lang),
                             fontWeight = FontWeight.Bold,
                             color = BrandNavy,
                             style = MaterialTheme.typography.titleMedium
@@ -135,7 +135,7 @@ fun OnboardingScreen(
                         OutlinedTextField(
                             value = shopName,
                             onValueChange = { shopName = it },
-                            label = { Text("Shop Name (दुकान का नाम) *") },
+                            label = { Text("${LocaleStrings.get("shop_name", lang)} *") },
                             placeholder = { Text("e.g. Gupta Kirana Store") },
                             modifier = Modifier.fillMaxWidth().testTag("onboarding_shop_name"),
                             singleLine = true,
@@ -147,7 +147,7 @@ fun OnboardingScreen(
                         OutlinedTextField(
                             value = ownerName,
                             onValueChange = { ownerName = it },
-                            label = { Text("Owner Name (मालिक का नाम)") },
+                            label = { Text(LocaleStrings.get("owner_name", lang)) },
                             placeholder = { Text("e.g. Ramesh Gupta") },
                             modifier = Modifier.fillMaxWidth().testTag("onboarding_owner_name"),
                             singleLine = true,
@@ -159,7 +159,7 @@ fun OnboardingScreen(
                         OutlinedTextField(
                             value = phone,
                             onValueChange = { phone = it },
-                            label = { Text("Phone Number (फ़ोन नंबर)") },
+                            label = { Text(LocaleStrings.get("phone_number", lang)) },
                             modifier = Modifier.fillMaxWidth().testTag("onboarding_phone"),
                             singleLine = true,
                             colors = dukanTextFieldColors(),
@@ -171,7 +171,7 @@ fun OnboardingScreen(
                         OutlinedTextField(
                             value = gstin,
                             onValueChange = { gstin = it },
-                            label = { Text("GSTIN (Optional / छोड़ सकते हैं)") },
+                            label = { Text(LocaleStrings.get("gstin", lang)) },
                             placeholder = { Text("22AAAAA0000A1Z5") },
                             modifier = Modifier.fillMaxWidth(),
                             singleLine = true,
@@ -183,7 +183,7 @@ fun OnboardingScreen(
                         OutlinedTextField(
                             value = address,
                             onValueChange = { address = it },
-                            label = { Text("Shop Address (दुकान का पता)") },
+                            label = { Text(LocaleStrings.get("shop_address", lang)) },
                             placeholder = { Text("e.g. Main Market, Station Road") },
                             modifier = Modifier.fillMaxWidth(),
                             singleLine = true,
@@ -207,7 +207,7 @@ fun OnboardingScreen(
                                 .height(50.dp)
                                 .testTag("onboarding_next_btn")
                         ) {
-                            Text("Next / आगे बढ़ें", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                            Text(LocaleStrings.get("next", lang), fontWeight = FontWeight.Bold, fontSize = 15.sp)
                             Spacer(modifier = Modifier.width(8.dp))
                             Icon(Icons.Default.ArrowForward, contentDescription = null)
                         }
@@ -222,7 +222,7 @@ fun OnboardingScreen(
                 ) {
                     Column(modifier = Modifier.padding(18.dp)) {
                         Text(
-                            text = "Step 2: Choose Setup Mode",
+                            text = LocaleStrings.get("settings", lang),
                             fontWeight = FontWeight.Bold,
                             color = BrandNavy,
                             style = MaterialTheme.typography.titleMedium
@@ -255,7 +255,7 @@ fun OnboardingScreen(
                                 Spacer(modifier = Modifier.width(12.dp))
                                 Column {
                                     Text(
-                                        text = "Start Fresh / नई दुकान शुरू करें",
+                                        text = LocaleStrings.get("start_fresh", lang),
                                         fontWeight = FontWeight.Bold,
                                         color = BrandNavy
                                     )
@@ -274,7 +274,7 @@ fun OnboardingScreen(
 
                         // Option B: Restore from Google Sheet or CSV
                         Text(
-                            text = "Or Restore from Backup / बैकअप से रीस्टोर करें",
+                            text = LocaleStrings.get("restore_backup", lang),
                             fontWeight = FontWeight.Bold,
                             color = Color.Black,
                             style = MaterialTheme.typography.titleSmall

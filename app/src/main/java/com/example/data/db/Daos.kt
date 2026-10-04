@@ -114,8 +114,15 @@ interface BillDao {
     @Query("SELECT * FROM bills WHERE billDate >= :startOfDay AND billDate <= :endOfDay AND status = 'active'")
     suspend fun getTodayBills(startOfDay: Long, endOfDay: Long): List<Bill>
 
-    @Query("SELECT * FROM bills WHERE billDate >= :startDate AND billDate <= :endDate AND status = 'active'")
+    @Query("SELECT * FROM bills WHERE billDate >= :startDate AND billDate <= :endDate AND status = 'active' ORDER BY billDate DESC")
     suspend fun getBillsInRange(startDate: Long, endDate: Long): List<Bill>
+
+    @Query("""
+        SELECT bi.* FROM bill_items bi
+        INNER JOIN bills b ON bi.billId = b.id
+        WHERE b.billDate >= :startDate AND b.billDate <= :endDate AND b.status = 'active'
+    """)
+    suspend fun getBillItemsSoldInRange(startDate: Long, endDate: Long): List<BillItem>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertBill(bill: Bill)

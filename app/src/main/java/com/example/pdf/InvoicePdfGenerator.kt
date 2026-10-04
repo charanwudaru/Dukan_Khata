@@ -185,7 +185,20 @@ object InvoicePdfGenerator {
             // --- Footer ---
             textPaint.textSize = 10f
             textPaint.color = Color.GRAY
-            canvas.drawText("Thank You for your business! / धन्यवाद! फिर पधारें।", 40f, y, textPaint)
+            val lang = shopProfile?.language?.lowercase() ?: "en"
+            val footerMsg = when (lang) {
+                "hi" -> "धन्यवाद! फिर पधारें।"
+                "te" -> "ధన్యవాదాలు! మళ్లీ రండి."
+                "ta" -> "நன்றி! மீண்டும் வருக."
+                "kn" -> "ಧನ್ಯವಾದಗಳು! ಮತ್ತೆ ಭೇಟಿ ನೀಡಿ."
+                "ml" -> "നന്ദി! വീണ്ടും സന്ദർശിക്കുക."
+                "mr" -> "धन्यवाद! पुन्हा भेट द्या."
+                "bn" -> "ধন্যবাদ! আবার আসবেন।"
+                "gu" -> "આભાર! ફરી પધારો."
+                "pa" -> "ਧੰਨਵਾਦ! ਦੁਬਾਰਾ ਆਓ।"
+                else -> "Thank You for your business! Visit Again."
+            }
+            canvas.drawText(footerMsg, 40f, y, textPaint)
             textPaint.textSize = 8.5f
             canvas.drawText("Generated via Dukan Khata • 100% Offline Ledger", 40f, y + 14f, textPaint)
 

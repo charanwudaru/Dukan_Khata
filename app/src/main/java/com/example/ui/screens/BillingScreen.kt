@@ -59,6 +59,7 @@ fun BillingScreen(
 
     var showAddItemDialog by remember { mutableStateOf(false) }
     var showCustomerDialog by remember { mutableStateOf(false) }
+    var showCreditCustomerDialog by remember { mutableStateOf(false) }
     var editingItem by remember { mutableStateOf<DraftBillItem?>(null) }
     var showNegativeStockDialog by remember { mutableStateOf(false) }
     var negativeStockWarningMsg by remember { mutableStateOf("") }
@@ -123,15 +124,16 @@ fun BillingScreen(
                                     viewModel.showMessage("Please add at least one item")
                                     return@Button
                                 }
-                                val negativeItems = viewModel.checkNegativeStockItems()
-                                if (negativeItems.isNotEmpty() && billType != "quotation") {
-                                    val item = negativeItems.first()
-                                    negativeStockWarningMsg = "Only ${item.availableQty} ${item.unit} available of '${item.itemName}'. (Requested: ${item.qty}). Continue anyway?"
-                                    showNegativeStockDialog = true
-                                } else {
-                                    viewModel.saveDraftBill { savedBill, savedItems ->
-                                        InvoicePdfGenerator.generateBillPdf(context, shopProfile, savedBill, savedItems)
-                                    }
+                                val isWalkIn = draftCustomer == null || customerName.isBlank() ||
+                                    customerName.equals("Walk-in Customer", ignoreCase = true) ||
+                                    customerName == LocaleStrings.get("walk_in", lang)
+                                if (paymentMode == "credit" && isWalkIn) {
+                                    showCreditCustomerDialog = true
+                                    viewModel.showMessage("Please enter customer name to record credit in Khata")
+                                    return@Button
+                                }
+                                viewModel.saveDraftBill { savedBill, savedItems ->
+                                    InvoicePdfGenerator.generateBillPdf(context, shopProfile, savedBill, savedItems)
                                 }
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = BrandNavy),
@@ -244,7 +246,7 @@ fun BillingScreen(
                             }
                         }
                         TextButton(onClick = { showCustomerDialog = true }) {
-                            Text("Change / बदलें", color = BrandBlue, fontWeight = FontWeight.Bold)
+                            Text(LocaleStrings.get("change", lang), color = BrandBlue, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -295,7 +297,7 @@ fun BillingScreen(
                             Icon(Icons.Default.AddShoppingCart, contentDescription = null, tint = Color.LightGray, modifier = Modifier.size(42.dp))
                             Spacer(modifier = Modifier.height(8.dp))
                             Text(
-                                text = "Tap + to add items from stock / सामान चुनें",
+                                text = LocaleStrings.get("tap_add_items", lang),
                                 color = Color.Gray,
                                 style = MaterialTheme.typography.bodyMedium
                             )
@@ -322,7 +324,7 @@ fun BillingScreen(
                 ) {
                     Column(modifier = Modifier.padding(14.dp)) {
                         Text(
-                            text = "Bill Summary / बिल योग",
+                            text = LocaleStrings.get("bill_summary", lang),
                             fontWeight = FontWeight.Bold,
                             style = MaterialTheme.typography.titleSmall,
                             color = Color(0xFF0F172A)
@@ -339,30 +341,106 @@ fun BillingScreen(
                         }
                         Spacer(modifier = Modifier.height(8.dp))
 
-                        // Discount Row
-                        var discountText by remember { mutableStateOf(if (discount > 0) discount.toString() else "") }
+                        // Discount Row with both ₹ and % modes
+                        var isDiscountPercent by remember { mutableStateOf(false) }
+                        var discountInput by remember { mutableStateOf(if (discount > 0) discount.toString() else "") }
+
+                        LaunchedEffect(subtotal, isDiscountPercent, discountInput) {
+                            if (isDiscountPercent) {
+                                val pct = discountInput.toDoubleOrNull() ?: 0.0
+                                val calcDiscount = (subtotal * pct) / 100.0
+                                viewModel.setDraftDiscount(calcDiscount)
+                            }
+                        }
+
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(LocaleStrings.get("discount", lang), color = Color(0xFF475569))
-                            OutlinedTextField(
-                                value = discountText,
-                                onValueChange = {
-                                    discountText = it
-                                    val d = it.toDoubleOrNull() ?: 0.0
-                                    viewModel.setDraftDiscount(d)
-                                },
-                                modifier = Modifier
-                                    .width(130.dp)
-                                    .testTag("discount_input"),
-                                placeholder = { Text("0") },
-                                singleLine = true,
-                                colors = dukanTextFieldColors(),
-                                textStyle = LocalTextStyle.current.copy(color = Color(0xFF0F172A), fontWeight = FontWeight.Bold),
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-                            )
+                            Column {
+                                Text(LocaleStrings.get("discount", lang), color = Color(0xFF475569))
+                                if (isDiscountPercent && discount > 0) {
+                                    Text(
+                                        text = "(-${formatRupee(discount)})",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = SuccessGreen,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                // Toggle ₹ and %
+                                Row(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(Color(0xFFF1F5F9))
+                                        .padding(2.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .background(if (!isDiscountPercent) BrandNavy else Color.Transparent)
+                                            .clickable {
+                                                isDiscountPercent = false
+                                                val amt = discountInput.toDoubleOrNull() ?: 0.0
+                                                viewModel.setDraftDiscount(amt)
+                                            }
+                                            .padding(horizontal = 8.dp, vertical = 6.dp)
+                                    ) {
+                                        Text(
+                                            "₹",
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (!isDiscountPercent) Color.White else Color.DarkGray,
+                                            fontSize = 13.sp
+                                        )
+                                    }
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .background(if (isDiscountPercent) BrandNavy else Color.Transparent)
+                                            .clickable {
+                                                isDiscountPercent = true
+                                                val pct = discountInput.toDoubleOrNull() ?: 0.0
+                                                val calcDiscount = (subtotal * pct) / 100.0
+                                                viewModel.setDraftDiscount(calcDiscount)
+                                            }
+                                            .padding(horizontal = 8.dp, vertical = 6.dp)
+                                    ) {
+                                        Text(
+                                            "%",
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (isDiscountPercent) Color.White else Color.DarkGray,
+                                            fontSize = 13.sp
+                                        )
+                                    }
+                                }
+
+                                OutlinedTextField(
+                                    value = discountInput,
+                                    onValueChange = {
+                                        discountInput = it
+                                        val entered = it.toDoubleOrNull() ?: 0.0
+                                        if (isDiscountPercent) {
+                                            val calc = (subtotal * entered) / 100.0
+                                            viewModel.setDraftDiscount(calc)
+                                        } else {
+                                            viewModel.setDraftDiscount(entered)
+                                        }
+                                    },
+                                    modifier = Modifier
+                                        .width(110.dp)
+                                        .testTag("discount_input"),
+                                    placeholder = { Text(if (isDiscountPercent) "0%" else "0") },
+                                    singleLine = true,
+                                    colors = dukanTextFieldColors(),
+                                    textStyle = LocalTextStyle.current.copy(color = Color(0xFF0F172A), fontWeight = FontWeight.Bold),
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                                )
+                            }
                         }
                         Spacer(modifier = Modifier.height(8.dp))
 
@@ -447,7 +525,20 @@ fun BillingScreen(
                                 Card(
                                     modifier = Modifier
                                         .weight(1f)
-                                        .clickable { viewModel.setDraftPaymentMode(mode) }
+                                        .clickable {
+                                            if (mode == "credit") {
+                                                val isWalkIn = draftCustomer == null || customerName.isBlank() ||
+                                                    customerName.equals("Walk-in Customer", ignoreCase = true) ||
+                                                    customerName == LocaleStrings.get("walk_in", lang)
+                                                if (isWalkIn) {
+                                                    showCreditCustomerDialog = true
+                                                } else {
+                                                    viewModel.setDraftPaymentMode("credit")
+                                                }
+                                            } else {
+                                                viewModel.setDraftPaymentMode(mode)
+                                            }
+                                        }
                                         .testTag("payment_mode_$mode"),
                                     shape = RoundedCornerShape(10.dp),
                                     colors = CardDefaults.cardColors(
@@ -493,6 +584,10 @@ fun BillingScreen(
                 viewModel.addDraftItem(stockItem, qty, price)
                 showAddItemDialog = false
             },
+            onCustomItemAdded = { name, unit, qty, price ->
+                viewModel.addDraftItemCustom(name, unit, qty, price)
+                showAddItemDialog = false
+            },
             onAddNewStockClick = {
                 showAddItemDialog = false
                 viewModel.navigateTo(AppScreen.STOCK)
@@ -518,6 +613,33 @@ fun BillingScreen(
                 viewModel.addCustomer(name, phone)
                 viewModel.setDraftCustomerManual(name, phone)
                 showCustomerDialog = false
+            }
+        )
+    }
+
+    // Credit Customer Dialog (prompts name when paying with Credit / Khata)
+    if (showCreditCustomerDialog) {
+        CreditCustomerDialog(
+            customerList = allCustomers,
+            onDismiss = {
+                showCreditCustomerDialog = false
+                val isStillWalkIn = draftCustomer == null || customerName.isBlank() ||
+                    customerName.equals("Walk-in Customer", ignoreCase = true) ||
+                    customerName == LocaleStrings.get("walk_in", lang)
+                if (isStillWalkIn) {
+                    viewModel.setDraftPaymentMode("cash")
+                }
+            },
+            onConfirm = { name, phone ->
+                viewModel.setOrCreateCreditCustomer(name, phone) {
+                    showCreditCustomerDialog = false
+                }
+            },
+            onSelectExisting = { cust ->
+                viewModel.setDraftCustomer(cust)
+                viewModel.setDraftPaymentMode("credit")
+                showCreditCustomerDialog = false
+                viewModel.showMessage("Selected ${cust.name} for Credit")
             }
         )
     }
@@ -952,6 +1074,7 @@ fun AddItemToBillDialog(
     stockList: List<StockItem>,
     onDismiss: () -> Unit,
     onItemAdded: (StockItem, Double, Double) -> Unit,
+    onCustomItemAdded: (String, String, Double, Double) -> Unit,
     onAddNewStockClick: () -> Unit
 ) {
     var searchQuery by remember { mutableStateOf("") }
@@ -959,6 +1082,13 @@ fun AddItemToBillDialog(
     var qtyText by remember { mutableStateOf("1") }
     var priceText by remember { mutableStateOf("") }
     var selectedSubUnit by remember { mutableStateOf<String?>(null) }
+
+    // Direct Custom Bill Item
+    var isCustomMode by remember { mutableStateOf(false) }
+    var customItemName by remember { mutableStateOf("") }
+    var customItemUnit by remember { mutableStateOf("pcs") }
+    var customItemQty by remember { mutableStateOf("1") }
+    var customItemPrice by remember { mutableStateOf("") }
 
     val filtered = stockList.filter { it.name.contains(searchQuery, ignoreCase = true) }
 
@@ -975,15 +1105,175 @@ fun AddItemToBillDialog(
                     .padding(16.dp)
                     .verticalScroll(rememberScrollState())
             ) {
-                Text(
-                    text = if (selectedStockItem == null) "Select Stock Item" else "Add ${selectedStockItem?.name}",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = BrandNavy
-                )
-                Spacer(modifier = Modifier.height(10.dp))
+                // Header & Mode Tabs
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = if (isCustomMode) "Bill New Item" else if (selectedStockItem == null) "Select Stock Item" else "Add ${selectedStockItem?.name}",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = BrandNavy
+                    )
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.Gray)
+                    }
+                }
 
                 if (selectedStockItem == null) {
+                    // Mode Switcher: Stock vs Custom
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0xFFF1F5F9))
+                            .padding(2.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(if (!isCustomMode) BrandNavy else Color.Transparent)
+                                .clickable { isCustomMode = false }
+                                .padding(vertical = 8.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                "From Stock (${stockList.size})",
+                                fontWeight = FontWeight.Bold,
+                                color = if (!isCustomMode) Color.White else Color.DarkGray,
+                                fontSize = 12.sp
+                            )
+                        }
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(if (isCustomMode) BrandNavy else Color.Transparent)
+                                .clickable {
+                                    isCustomMode = true
+                                    if (customItemName.isBlank() && searchQuery.isNotBlank()) {
+                                        customItemName = searchQuery
+                                    }
+                                }
+                                .padding(vertical = 8.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                "+ Bill New Item",
+                                fontWeight = FontWeight.Bold,
+                                color = if (isCustomMode) Color.White else Color.DarkGray,
+                                fontSize = 12.sp
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(10.dp))
+                }
+
+                if (isCustomMode) {
+                    // Form to bill a new item directly even without stock
+                    OutlinedTextField(
+                        value = customItemName,
+                        onValueChange = { customItemName = it },
+                        label = { Text("Item Name *") },
+                        placeholder = { Text("e.g. Basmati Rice, Shampoo, Maggi") },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        colors = dukanTextFieldColors(),
+                        textStyle = LocalTextStyle.current.copy(color = Color(0xFF0F172A), fontWeight = FontWeight.Bold)
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Text("Unit:", style = MaterialTheme.typography.labelMedium, color = Color(0xFF475569))
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        listOf("pcs", "kg", "g", "packet", "l", "ml", "box").forEach { u ->
+                            val isSel = customItemUnit == u
+                            FilterChip(
+                                selected = isSel,
+                                onClick = { customItemUnit = u },
+                                label = { Text(u, fontSize = 11.sp, fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal) },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = BrandNavy,
+                                    selectedLabelColor = Color.White
+                                )
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = customItemQty,
+                            onValueChange = { customItemQty = it },
+                            label = { Text("Qty ($customItemUnit) *") },
+                            modifier = Modifier.weight(1f),
+                            singleLine = true,
+                            colors = dukanTextFieldColors(),
+                            textStyle = LocalTextStyle.current.copy(color = Color(0xFF0F172A), fontWeight = FontWeight.Bold),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                        )
+
+                        OutlinedTextField(
+                            value = customItemPrice,
+                            onValueChange = { customItemPrice = it },
+                            label = { Text("Price (₹) *") },
+                            modifier = Modifier.weight(1f),
+                            singleLine = true,
+                            colors = dukanTextFieldColors(),
+                            textStyle = LocalTextStyle.current.copy(color = Color(0xFF0F172A), fontWeight = FontWeight.Bold),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                        )
+                    }
+
+                    val cQty = customItemQty.toDoubleOrNull() ?: 1.0
+                    val cPrice = customItemPrice.toDoubleOrNull() ?: 0.0
+                    val cTotal = cQty * cPrice
+
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(10.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFFE8EAF6))
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(10.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("Total: ${formatRupee(cTotal)}", fontWeight = FontWeight.Bold, color = BrandNavy)
+                            Text("Will be added to Stock on Bill", style = MaterialTheme.typography.labelSmall, color = Color(0xFF475569))
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        TextButton(onClick = { isCustomMode = false }) { Text("Back to Stock") }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Button(
+                            onClick = {
+                                if (customItemName.isNotBlank() && cPrice > 0 && cQty > 0) {
+                                    onCustomItemAdded(customItemName, customItemUnit, cQty, cPrice)
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = BrandNavy),
+                            enabled = customItemName.isNotBlank() && cPrice > 0
+                        ) {
+                            Text("Add to Bill")
+                        }
+                    }
+                } else if (selectedStockItem == null) {
                     OutlinedTextField(
                         value = searchQuery,
                         onValueChange = { searchQuery = it },
@@ -996,17 +1286,61 @@ fun AddItemToBillDialog(
                     )
                     Spacer(modifier = Modifier.height(10.dp))
 
-                    if (filtered.isEmpty()) {
+                    if (searchQuery.isNotBlank()) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(Color(0xFFEFF6FF))
+                                .clickable {
+                                    customItemName = searchQuery
+                                    isCustomMode = true
+                                }
+                                .padding(10.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text("+ Bill '$searchQuery' directly", fontWeight = FontWeight.Bold, color = BrandBlue, fontSize = 13.sp)
+                            Icon(Icons.Default.ArrowForward, contentDescription = null, tint = BrandBlue, modifier = Modifier.size(16.dp))
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
+
+                    if (filtered.isEmpty() && searchQuery.isBlank()) {
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(16.dp),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            Text("No matching item found", color = Color(0xFF64748B))
+                            Text("No stock items yet", color = Color(0xFF64748B))
                             Spacer(modifier = Modifier.height(8.dp))
-                            TextButton(onClick = onAddNewStockClick) {
-                                Text("+ Add to Stock First", fontWeight = FontWeight.Bold, color = BrandNavy)
+                            Button(
+                                onClick = {
+                                    isCustomMode = true
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = BrandNavy)
+                            ) {
+                                Text("+ Bill New Item Directly")
+                            }
+                        }
+                    } else if (filtered.isEmpty() && searchQuery.isNotBlank()) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text("Item not found in stock", color = Color(0xFF64748B))
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Button(
+                                onClick = {
+                                    customItemName = searchQuery
+                                    isCustomMode = true
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = BrandNavy)
+                            ) {
+                                Text("+ Bill '$searchQuery' as New Item")
                             }
                         }
                     } else {
@@ -1288,7 +1622,7 @@ fun CustomerSelectDialog(
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Text(
-                    text = if (isAddingNew) "Add Customer / नया ग्राहक" else "Pick Customer / ग्राहक चुनें",
+                    text = if (isAddingNew) LocaleStrings.get("add_customer") else LocaleStrings.get("select_customer"),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = BrandNavy
@@ -1349,7 +1683,7 @@ fun CustomerSelectDialog(
                         ) {
                             Icon(Icons.Default.PersonOutline, contentDescription = null, tint = BrandNavy)
                             Spacer(modifier = Modifier.width(10.dp))
-                            Text("Walk-in Customer / नकद ग्राहक", fontWeight = FontWeight.Bold, color = BrandNavy)
+                            Text(LocaleStrings.get("walk_in"), fontWeight = FontWeight.Bold, color = BrandNavy)
                         }
                     }
                     Spacer(modifier = Modifier.height(8.dp))
@@ -1417,4 +1751,227 @@ fun CustomerSelectDialog(
             }
         }
     }
+}
+
+@Composable
+fun CreditCustomerDialog(
+    customerList: List<Customer>,
+    onDismiss: () -> Unit,
+    onConfirm: (name: String, phone: String) -> Unit,
+    onSelectExisting: (Customer) -> Unit
+) {
+    var name by remember { mutableStateOf("") }
+    var phone by remember { mutableStateOf("") }
+    var searchQuery by remember { mutableStateOf("") }
+    var isNewCustomerMode by remember { mutableStateOf(customerList.isEmpty()) }
+
+    val filtered = if (searchQuery.isBlank()) customerList else customerList.filter {
+        it.name.contains(searchQuery, ignoreCase = true) || it.phone.contains(searchQuery)
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(WarningAmberBg),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.AccountBalanceWallet,
+                        contentDescription = null,
+                        tint = WarningAmber,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(10.dp))
+                Column {
+                    Text(
+                        text = "Customer for Credit Sale",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = BrandNavy
+                    )
+                    Text(
+                        text = "उधार / खाता ग्राहक चुनें",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color.Gray
+                    )
+                }
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Surface(
+                    color = Color(0xFFFFF8E1),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "Credit sales must be linked to a customer name so their Khata balance is accurately recorded.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = Color(0xFF856404),
+                        modifier = Modifier.padding(10.dp)
+                    )
+                }
+
+                if (customerList.isNotEmpty()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0xFFF1F5F9))
+                            .padding(2.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(if (!isNewCustomerMode) BrandNavy else Color.Transparent)
+                                .clickable { isNewCustomerMode = false }
+                                .padding(vertical = 8.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                "Existing (${customerList.size})",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (!isNewCustomerMode) Color.White else Color.DarkGray
+                            )
+                        }
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(if (isNewCustomerMode) BrandNavy else Color.Transparent)
+                                .clickable { isNewCustomerMode = true }
+                                .padding(vertical = 8.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                "+ New Customer",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isNewCustomerMode) Color.White else Color.DarkGray
+                            )
+                        }
+                    }
+                }
+
+                if (isNewCustomerMode) {
+                    OutlinedTextField(
+                        value = name,
+                        onValueChange = { name = it },
+                        label = { Text("Customer Name *") },
+                        placeholder = { Text("e.g. Ramesh Kumar") },
+                        singleLine = true,
+                        leadingIcon = { Icon(Icons.Default.Person, contentDescription = null) },
+                        modifier = Modifier.fillMaxWidth().testTag("credit_customer_name_input"),
+                        shape = RoundedCornerShape(10.dp)
+                    )
+
+                    OutlinedTextField(
+                        value = phone,
+                        onValueChange = { phone = it },
+                        label = { Text("Phone Number (Optional)") },
+                        placeholder = { Text("e.g. 9876543210") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                        leadingIcon = { Icon(Icons.Default.Phone, contentDescription = null) },
+                        modifier = Modifier.fillMaxWidth().testTag("credit_customer_phone_input"),
+                        shape = RoundedCornerShape(10.dp)
+                    )
+                } else {
+                    OutlinedTextField(
+                        value = searchQuery,
+                        onValueChange = { searchQuery = it },
+                        placeholder = { Text("Search name or phone...") },
+                        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(10.dp)
+                    )
+
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 200.dp)
+                            .verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        filtered.forEach { cust ->
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { onSelectExisting(cust) },
+                                shape = RoundedCornerShape(8.dp),
+                                colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC))
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(10.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(cust.name, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                        if (cust.phone.isNotBlank()) {
+                                            Text(cust.phone, style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+                                        }
+                                    }
+                                    if (cust.balanceDue > 0) {
+                                        Text(
+                                            "Due: ${formatRupee(cust.balanceDue)}",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = DangerRed
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        if (filtered.isEmpty()) {
+                            Text(
+                                "No customer found. Switch to '+ New Customer' above.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = Color.Gray,
+                                modifier = Modifier.padding(vertical = 12.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            if (isNewCustomerMode) {
+                Button(
+                    onClick = {
+                        if (name.trim().isNotBlank()) {
+                            onConfirm(name.trim(), phone.trim())
+                        }
+                    },
+                    enabled = name.trim().isNotBlank(),
+                    colors = ButtonDefaults.buttonColors(containerColor = BrandNavy),
+                    shape = RoundedCornerShape(10.dp),
+                    modifier = Modifier.testTag("confirm_credit_customer_button")
+                ) {
+                    Text("Apply Credit")
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
 }

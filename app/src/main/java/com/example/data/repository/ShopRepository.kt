@@ -179,28 +179,71 @@ class ShopRepository(private val db: AppDatabase) {
         db.billDao().insertBill(bill)
         db.billDao().insertBillItems(items)
 
-        // Deduct stock for Invoice and Receipt (not Quotation)
+        // Deduct stock or add newly billed items to stock (for Invoice and Receipt, not Quotation)
         if (bill.billType != "quotation") {
             for (item in items) {
-                db.stockDao().adjustStockQuantity(item.stockItemId, -item.qty)
+                val existing = db.stockDao().getStockById(item.stockItemId)
+                if (existing != null) {
+                    db.stockDao().adjustStockQuantity(item.stockItemId, -item.qty)
+                } else {
+                    // Even without prior stock, bill was created; add this new item to stock!
+                    val newStock = StockItem(
+                        id = item.stockItemId,
+                        name = item.itemNameSnapshot,
+                        unit = item.unit,
+                        currentQty = 0.0,
+                        purchasePrice = item.purchasePriceSnapshot,
+                        sellingPrice = item.pricePerUnit,
+                        lowStockThreshold = 5.0,
+                        createdAt = System.currentTimeMillis(),
+                        updatedAt = System.currentTimeMillis(),
+                        synced = 0
+                    )
+                    db.stockDao().insertStock(newStock)
+                }
             }
         }
 
         // Khata entry for credit sales
-        if (bill.paymentMode == "credit" && bill.customerId != null && bill.billType != "quotation") {
-            val khataEntry = KhataEntry(
-                id = UUID.randomUUID().toString(),
-                customerId = bill.customerId,
-                entryType = "credit_bill",
-                amount = bill.total,
-                billId = bill.id,
-                entryDate = bill.billDate,
-                note = "Bill #${bill.billNumber}",
-                createdAt = System.currentTimeMillis(),
-                synced = 0
-            )
-            db.khataDao().insertKhataEntry(khataEntry)
-            db.customerDao().adjustCustomerBalance(bill.customerId, bill.total)
+        if (bill.paymentMode == "credit" && bill.billType != "quotation") {
+            var targetCustomerId = bill.customerId
+            if (targetCustomerId == null && bill.customerNameSnapshot.isNotBlank() && !bill.customerNameSnapshot.equals("Walk-in Customer", ignoreCase = true)) {
+                val existing = db.customerDao().getAllCustomers().find {
+                    it.name.equals(bill.customerNameSnapshot.trim(), ignoreCase = true) ||
+                        (bill.customerPhoneSnapshot.isNotBlank() && it.phone == bill.customerPhoneSnapshot.trim())
+                }
+                if (existing != null) {
+                    targetCustomerId = existing.id
+                } else {
+                    val newCust = Customer(
+                        id = UUID.randomUUID().toString(),
+                        name = bill.customerNameSnapshot.trim(),
+                        phone = bill.customerPhoneSnapshot.trim(),
+                        balanceDue = 0.0,
+                        createdAt = System.currentTimeMillis(),
+                        updatedAt = System.currentTimeMillis(),
+                        synced = 0
+                    )
+                    db.customerDao().insertCustomer(newCust)
+                    targetCustomerId = newCust.id
+                }
+            }
+
+            if (targetCustomerId != null) {
+                val khataEntry = KhataEntry(
+                    id = UUID.randomUUID().toString(),
+                    customerId = targetCustomerId,
+                    entryType = "credit_bill",
+                    amount = bill.total,
+                    billId = bill.id,
+                    entryDate = bill.billDate,
+                    note = "Bill #${bill.billNumber}",
+                    createdAt = System.currentTimeMillis(),
+                    synced = 0
+                )
+                db.khataDao().insertKhataEntry(khataEntry)
+                db.customerDao().adjustCustomerBalance(targetCustomerId, bill.total)
+            }
         }
     }
 
@@ -304,6 +347,75 @@ class ShopRepository(private val db: AppDatabase) {
             upiSales = upiSales,
             creditSales = creditSales,
             billCount = invoiceCount
+        )
+    }
+
+    suspend fun getSalesForDate(dateMillis: Long): DateSalesSummary = withContext(Dispatchers.IO) {
+        val calendar = Calendar.getInstance().apply {
+            timeInMillis = dateMillis
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
+        val startOfDay = calendar.timeInMillis
+
+        calendar.set(Calendar.HOUR_OF_DAY, 23)
+        calendar.set(Calendar.MINUTE, 59)
+        calendar.set(Calendar.SECOND, 59)
+        calendar.set(Calendar.MILLISECOND, 999)
+        val endOfDay = calendar.timeInMillis
+
+        val bills = db.billDao().getBillsInRange(startOfDay, endOfDay)
+            .filter { it.billType != "quotation" && it.status == "active" }
+        val billItems = db.billDao().getBillItemsSoldInRange(startOfDay, endOfDay)
+
+        var totalSales = 0.0
+        var cashSales = 0.0
+        var upiSales = 0.0
+        var creditSales = 0.0
+
+        for (bill in bills) {
+            totalSales += bill.total
+            when (bill.paymentMode.lowercase()) {
+                "cash" -> cashSales += bill.total
+                "upi" -> upiSales += bill.total
+                "credit" -> creditSales += bill.total
+                else -> cashSales += bill.total
+            }
+        }
+
+        // Group items by item name to show clean summary of what was sold on this date
+        val soldItems = billItems.groupBy { it.itemNameSnapshot.trim().lowercase() }
+            .map { (_, group) ->
+                val first = group.first()
+                val totalQty = group.sumOf { it.qty }
+                val totalAmount = group.sumOf { it.lineTotal }
+                val billCount = group.map { it.billId }.distinct().size
+                val avgPrice = if (totalQty > 0) totalAmount / totalQty else first.pricePerUnit
+                SoldItemSummary(
+                    stockItemId = first.stockItemId,
+                    itemName = first.itemNameSnapshot,
+                    unit = first.unit,
+                    totalQty = totalQty,
+                    totalAmount = totalAmount,
+                    billCount = billCount,
+                    avgPrice = avgPrice
+                )
+            }.sortedByDescending { it.totalAmount }
+
+        val billItemsMap = billItems.groupBy { it.billId }
+
+        DateSalesSummary(
+            dateTimestamp = dateMillis,
+            totalSales = totalSales,
+            billCount = bills.size,
+            cashSales = cashSales,
+            upiSales = upiSales,
+            creditSales = creditSales,
+            bills = bills,
+            soldItems = soldItems,
+            billItemsMap = billItemsMap
         )
     }
 
@@ -446,6 +558,28 @@ data class SalesSummary(
     val upiSales: Double = 0.0,
     val creditSales: Double = 0.0,
     val billCount: Int = 0
+)
+
+data class SoldItemSummary(
+    val stockItemId: String,
+    val itemName: String,
+    val unit: String,
+    val totalQty: Double,
+    val totalAmount: Double,
+    val billCount: Int,
+    val avgPrice: Double
+)
+
+data class DateSalesSummary(
+    val dateTimestamp: Long,
+    val totalSales: Double,
+    val billCount: Int,
+    val cashSales: Double,
+    val upiSales: Double,
+    val creditSales: Double,
+    val bills: List<Bill> = emptyList(),
+    val soldItems: List<SoldItemSummary> = emptyList(),
+    val billItemsMap: Map<String, List<BillItem>> = emptyMap()
 )
 
 data class ProfitReport(

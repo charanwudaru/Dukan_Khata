@@ -2,9 +2,11 @@ package com.example.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -127,7 +129,7 @@ fun HomeScreen(
             // Section: 3 Critical Numbers
             item {
                 Text(
-                    text = "Shop Overview / दुकान स्थिति",
+                    text = LocaleStrings.get("shop_overview", lang),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = Color.Black
@@ -142,11 +144,11 @@ fun HomeScreen(
                 MetricStatCard(
                     title = LocaleStrings.get("today_sales", lang),
                     value = formatRupee(todaySales.totalSales),
-                    subtitle = "$cashText • $upiText • $creditText (${todaySales.billCount} bills)",
+                    subtitle = "$cashText • $upiText • $creditText (${todaySales.billCount} bills) — Tap to view sold items",
                     icon = Icons.Default.CurrencyRupee,
                     iconBgColor = Color(0xFFE3F2FD),
                     iconColor = BrandBlue,
-                    onClick = { viewModel.navigateTo(AppScreen.REPORTS) },
+                    onClick = { viewModel.openSalesByDate() },
                     modifier = Modifier.testTag("card_today_sales")
                 )
             }
@@ -270,8 +272,10 @@ fun HomeScreen(
                         )
                         Spacer(modifier = Modifier.height(12.dp))
                         Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(16.dp)
                         ) {
                             QuickActionButton(
                                 icon = Icons.Default.ReceiptLong,
@@ -280,6 +284,14 @@ fun HomeScreen(
                                 iconColor = BrandNavy,
                                 onClick = { viewModel.startNewBill() },
                                 testTag = "quick_new_bill"
+                            )
+                            QuickActionButton(
+                                icon = Icons.Default.CalendarMonth,
+                                label = "All Sold",
+                                bgColor = Color(0xFFE0F2FE),
+                                iconColor = BrandBlue,
+                                onClick = { viewModel.openSalesByDate() },
+                                testTag = "quick_sales_by_date"
                             )
                             QuickActionButton(
                                 icon = Icons.Default.AddBox,
@@ -299,7 +311,7 @@ fun HomeScreen(
                             )
                             QuickActionButton(
                                 icon = Icons.Default.CloudSync,
-                                label = "Sync / बैकअप",
+                                label = LocaleStrings.get("backup_sync", lang),
                                 bgColor = Color(0xFFF3E5F5),
                                 iconColor = Color(0xFF7B1FA2),
                                 onClick = { viewModel.navigateTo(AppScreen.SETTINGS) },
@@ -329,7 +341,7 @@ fun HomeScreen(
                             style = MaterialTheme.typography.bodySmall,
                             color = BrandBlue,
                             fontWeight = FontWeight.Bold,
-                            modifier = Modifier.clickable { viewModel.navigateTo(AppScreen.REPORTS) }
+                            modifier = Modifier.clickable { viewModel.openSalesByDate() }
                         )
                     }
                 }

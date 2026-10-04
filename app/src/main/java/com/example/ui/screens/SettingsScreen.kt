@@ -2,11 +2,14 @@ package com.example.ui.screens
 
 import android.content.Intent
 import android.widget.Toast
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -47,6 +50,7 @@ fun SettingsScreen(
 
     var showProfileDialog by remember { mutableStateOf(false) }
     var showRestoreDialog by remember { mutableStateOf(false) }
+    var showScriptGuideDialog by remember { mutableStateOf(false) }
     var sheetInput by remember { mutableStateOf(syncStatus.sheetIdOrUrl) }
 
     Scaffold(
@@ -288,7 +292,51 @@ fun SettingsScreen(
                         Spacer(modifier = Modifier.height(10.dp))
 
                         if (syncStatus.isConnected) {
-                            Text(text = "Target Sheet ID: ${syncStatus.sheetIdOrUrl.take(15)}...", style = MaterialTheme.typography.bodySmall, color = Color.DarkGray)
+                            if (syncStatus.isWebhook) {
+                                Card(
+                                    colors = CardDefaults.cardColors(containerColor = Color(0xFFE8F5E9)),
+                                    border = BorderStroke(1.dp, SuccessGreen.copy(alpha = 0.5f)),
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                                ) {
+                                    Row(modifier = Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(Icons.Default.Bolt, contentDescription = null, tint = SuccessGreen, modifier = Modifier.size(22.dp))
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Column {
+                                            Text("🟢 Live Real-Time PC Sync Active", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color(0xFF1B5E20))
+                                            Text("Every bill, stock change, and payment updates your Google Sheet on your PC immediately!", fontSize = 11.sp, color = Color(0xFF2E7D32))
+                                        }
+                                    }
+                                }
+                            } else {
+                                Card(
+                                    colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF3E0)),
+                                    border = BorderStroke(1.dp, WarningAmber.copy(alpha = 0.6f)),
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                                ) {
+                                    Column(modifier = Modifier.padding(12.dp)) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(Icons.Default.WarningAmber, contentDescription = null, tint = WarningAmber, modifier = Modifier.size(20.dp))
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text("Why isn't my PC Sheet updating?", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color(0xFFE65100))
+                                        }
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text("Google blocks external apps from directly modifying your sheet on PC without an Apps Script Web App. Deploy the 1-minute script to get live updates and dashboard charts.", fontSize = 11.sp, color = Color(0xFFBF360C))
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        Button(
+                                            onClick = { showScriptGuideDialog = true },
+                                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE65100)),
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Icon(Icons.Default.Bolt, contentDescription = null, modifier = Modifier.size(16.dp))
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text("Setup Real-Time PC Sync (1-Click Script)", fontSize = 12.sp)
+                                        }
+                                    }
+                                }
+                            }
+
+                            val targetDesc = if (syncStatus.isWebhook) "Connected Webhook (Auto-writes to PC)" else "Sheet ID: ${syncStatus.sheetIdOrUrl.take(18)}..."
+                            Text(text = targetDesc, style = MaterialTheme.typography.bodySmall, color = Color.DarkGray, fontWeight = FontWeight.Medium)
                             if (syncStatus.lastSyncTime > 0) {
                                 Text(
                                     text = LocaleStrings.get("last_synced", lang).format(formatDate(syncStatus.lastSyncTime)),
@@ -309,7 +357,7 @@ fun SettingsScreen(
                                 Text(text = syncStatus.errorMessage!!, style = MaterialTheme.typography.bodySmall, color = DangerRed)
                             }
 
-                            Spacer(modifier = Modifier.height(12.dp))
+                            Spacer(modifier = Modifier.height(10.dp))
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -319,7 +367,7 @@ fun SettingsScreen(
                                         scope.launch {
                                             val success = viewModel.syncManager.syncNow()
                                             if (success) {
-                                                Toast.makeText(context, "Sync complete!", Toast.LENGTH_SHORT).show()
+                                                Toast.makeText(context, "Google Sheet updated on your PC!", Toast.LENGTH_SHORT).show()
                                             }
                                         }
                                     },
@@ -328,19 +376,43 @@ fun SettingsScreen(
                                 ) {
                                     Icon(Icons.Default.Sync, contentDescription = null)
                                     Spacer(modifier = Modifier.width(6.dp))
-                                    Text(LocaleStrings.get("sync_now", lang))
+                                    Text("Sync Now / Update PC")
+                                }
+
+                                OutlinedButton(
+                                    onClick = { viewModel.syncManager.exportAndShareToGoogleSheets(context) },
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Icon(Icons.Default.Share, contentDescription = null, tint = BrandNavy)
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(LocaleStrings.get("export_to_sheets", lang), color = BrandNavy, fontSize = 12.sp)
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                OutlinedButton(
+                                    onClick = { showScriptGuideDialog = true },
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Icon(Icons.Default.Code, contentDescription = null, tint = BrandNavy, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("View Apps Script", color = BrandNavy, fontSize = 12.sp)
                                 }
 
                                 OutlinedButton(
                                     onClick = { viewModel.syncManager.disconnectBackup() },
                                     modifier = Modifier.weight(1f)
                                 ) {
-                                    Text(LocaleStrings.get("disconnect_backup", lang), color = DangerRed)
+                                    Text(LocaleStrings.get("disconnect_backup", lang), color = DangerRed, fontSize = 12.sp)
                                 }
                             }
                         } else {
                             Text(
-                                text = "Keep your shop data safely backed up in your own Google Sheet. Works seamlessly offline and syncs when online.",
+                                text = "Keep your shop data safely backed up and updated live in your Google Sheet on your PC with 5 organized sheets & dashboard graphs.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = Color.DarkGray
                             )
@@ -349,8 +421,8 @@ fun SettingsScreen(
                             OutlinedTextField(
                                 value = sheetInput,
                                 onValueChange = { sheetInput = it },
-                                label = { Text("Google Sheet Link or ID") },
-                                placeholder = { Text("docs.google.com/spreadsheets/d/...") },
+                                label = { Text("Apps Script Webhook URL or Sheet Link") },
+                                placeholder = { Text("https://script.google.com/macros/s/.../exec") },
                                 modifier = Modifier.fillMaxWidth().testTag("sheet_url_input"),
                                 singleLine = true,
                                 colors = dukanTextFieldColors(),
@@ -358,23 +430,37 @@ fun SettingsScreen(
                             )
                             Spacer(modifier = Modifier.height(10.dp))
 
-                            Button(
-                                onClick = {
-                                    scope.launch {
-                                        val res = viewModel.syncManager.connectBackupSheet(sheetInput)
-                                        if (res.isSuccess) {
-                                            Toast.makeText(context, "Sheet connected!", Toast.LENGTH_SHORT).show()
-                                        } else {
-                                            Toast.makeText(context, res.exceptionOrNull()?.message ?: "Connection failed", Toast.LENGTH_LONG).show()
-                                        }
-                                    }
-                                },
-                                colors = ButtonDefaults.buttonColors(containerColor = BrandNavy),
-                                modifier = Modifier.fillMaxWidth().testTag("connect_sheet_btn")
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                Icon(Icons.Default.Link, contentDescription = null)
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(LocaleStrings.get("connect_sheet", lang))
+                                Button(
+                                    onClick = {
+                                        scope.launch {
+                                            val res = viewModel.syncManager.connectBackupSheet(sheetInput)
+                                            if (res.isSuccess) {
+                                                Toast.makeText(context, "Connected successfully!", Toast.LENGTH_SHORT).show()
+                                            } else {
+                                                Toast.makeText(context, res.exceptionOrNull()?.message ?: "Connection failed", Toast.LENGTH_LONG).show()
+                                            }
+                                        }
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = BrandNavy),
+                                    modifier = Modifier.weight(1f).testTag("connect_sheet_btn")
+                                ) {
+                                    Icon(Icons.Default.Link, contentDescription = null)
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(LocaleStrings.get("connect_sheet", lang))
+                                }
+
+                                OutlinedButton(
+                                    onClick = { showScriptGuideDialog = true },
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Icon(Icons.Default.Bolt, contentDescription = null, tint = BrandNavy)
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Setup Guide & Script", fontSize = 11.sp, color = BrandNavy)
+                                }
                             }
                         }
 
@@ -459,6 +545,25 @@ fun SettingsScreen(
             }
         )
     }
+
+    // Real-Time Sheet Guide Dialog
+    if (showScriptGuideDialog) {
+        RealtimeSheetGuideDialog(
+            scriptCode = viewModel.syncManager.getSampleAppsScript(),
+            onDismiss = { showScriptGuideDialog = false },
+            onConnect = { url ->
+                scope.launch {
+                    val res = viewModel.syncManager.connectBackupSheet(url)
+                    if (res.isSuccess) {
+                        Toast.makeText(context, "Real-Time PC Sync connected! Google Sheet updated.", Toast.LENGTH_SHORT).show()
+                        showScriptGuideDialog = false
+                    } else {
+                        Toast.makeText(context, res.exceptionOrNull()?.message ?: "Connection failed", Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+        )
+    }
 }
 
 @Composable
@@ -481,7 +586,7 @@ fun EditProfileDialog(
         ) {
             Column(modifier = Modifier.padding(18.dp)) {
                 Text(
-                    text = "Edit Shop Details / दुकान विवरण",
+                    text = LocaleStrings.get("shop_profile"),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = BrandNavy
@@ -627,6 +732,183 @@ fun RestoreBackupDialog(
                         modifier = Modifier.testTag("confirm_restore_btn")
                     ) {
                         Text("Restore Now")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun RealtimeSheetGuideDialog(
+    scriptCode: String,
+    onDismiss: () -> Unit,
+    onConnect: (String) -> Unit
+) {
+    val context = LocalContext.current
+    val clipboardManager = LocalClipboardManager.current
+    var webAppUrlInput by remember { mutableStateOf("") }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = Color.White,
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(0.92f)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(20.dp)
+                    .verticalScroll(rememberScrollState())
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "⚡ Real-Time PC Sync & Charts",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = BrandNavy
+                    )
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Default.Close, contentDescription = "Close")
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFFE8F5E9)),
+                    border = BorderStroke(1.dp, SuccessGreen.copy(alpha = 0.5f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Text(
+                            text = "Single Workbook with 5 Clean Sheets & Graphs:",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp,
+                            color = Color(0xFF1B5E20)
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text("1. 📊 Dashboard: Live KPI cards (Revenue, Cash, UPI, Udhar, Stock Value, Low Stock Alerts) + Payment Mode Pie Chart & Stock Column Chart!", fontSize = 11.sp, color = Color(0xFF2E7D32))
+                        Text("2. 🧾 Bills: All invoice records, customer details, and item summaries", fontSize = 11.sp, color = Color(0xFF2E7D32))
+                        Text("3. 📦 Stock: Live inventory levels, costs, valuations, and low-stock highlights", fontSize = 11.sp, color = Color(0xFF2E7D32))
+                        Text("4. 👥 Khata: Customer ledger & outstanding dues", fontSize = 11.sp, color = Color(0xFF2E7D32))
+                        Text("5. 💳 Transactions: Complete payment & credit history", fontSize = 11.sp, color = Color(0xFF2E7D32))
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                Text(
+                    text = "Why doesn't a direct sheet URL update in real-time?",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp,
+                    color = Color.Black
+                )
+                Text(
+                    text = "Google's security requires a 1-minute Apps Script Web App so your phone can securely write changes directly into your Google Sheet on your PC as you bill customers or adjust stock.",
+                    fontSize = 12.sp,
+                    color = Color.DarkGray
+                )
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                Text(
+                    text = "4 Easy Steps to Connect (Takes 1 min):",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp,
+                    color = BrandNavy
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Text("1. Open your Google Sheet on your PC.", fontSize = 12.sp, color = Color(0xFF1E293B))
+                Text("2. Click 'Extensions' > 'Apps Script' in the top menu.", fontSize = 12.sp, color = Color(0xFF1E293B))
+                Text("3. Delete any default text, paste this script, and save.", fontSize = 12.sp, color = Color(0xFF1E293B))
+                Text("4. Click 'Deploy' > 'New deployment' -> Select 'Web app' -> Set 'Who has access' to 'Anyone' -> Click Deploy. Copy the Web App URL and paste below!", fontSize = 12.sp, color = Color(0xFF1E293B))
+
+                Spacer(modifier = Modifier.height(14.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Button(
+                        onClick = {
+                            clipboardManager.setText(AnnotatedString(scriptCode))
+                            Toast.makeText(context, "Full Apps Script Copied to Clipboard!", Toast.LENGTH_SHORT).show()
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = BrandNavy),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Copy Script", fontSize = 12.sp)
+                    }
+
+                    OutlinedButton(
+                        onClick = {
+                            val intent = Intent(Intent.ACTION_SEND).apply {
+                                type = "text/plain"
+                                putExtra(Intent.EXTRA_SUBJECT, "Dukan Khata Google Sheets Sync Script")
+                                putExtra(Intent.EXTRA_TEXT, scriptCode)
+                            }
+                            context.startActivity(Intent.createChooser(intent, "Share Script to PC via WhatsApp / Email"))
+                        },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(Icons.Default.Share, contentDescription = null, tint = BrandNavy, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Share to PC", fontSize = 12.sp, color = BrandNavy)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+                HorizontalDivider()
+                Spacer(modifier = Modifier.height(14.dp))
+
+                Text(
+                    text = "Paste Your Web App URL Here:",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp,
+                    color = BrandNavy
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+
+                OutlinedTextField(
+                    value = webAppUrlInput,
+                    onValueChange = { webAppUrlInput = it },
+                    placeholder = { Text("https://script.google.com/macros/s/.../exec") },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    colors = dukanTextFieldColors(),
+                    textStyle = LocalTextStyle.current.copy(color = Color(0xFF0F172A), fontWeight = FontWeight.Medium)
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(onClick = onDismiss) { Text("Cancel") }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(
+                        onClick = {
+                            if (webAppUrlInput.isNotBlank()) {
+                                onConnect(webAppUrlInput.trim())
+                            } else {
+                                Toast.makeText(context, "Please paste the Web App URL first", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = SuccessGreen)
+                    ) {
+                        Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Connect & Live Sync")
                     }
                 }
             }

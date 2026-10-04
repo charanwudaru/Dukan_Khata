@@ -180,7 +180,7 @@ fun BillDetailScreen(
                                 )
                             }
                             if (isVoided) {
-                                StatusBadge(text = "VOIDED / निरस्त", bgColor = DangerRed, textColor = Color.White)
+                                StatusBadge(text = LocaleStrings.get("voided", lang), bgColor = DangerRed, textColor = Color.White)
                             } else {
                                 StatusBadge(
                                     text = currentBill.paymentMode.uppercase(),
@@ -337,7 +337,7 @@ fun BillDetailScreen(
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = DangerRed)
                 ) {
-                    Text("Yes, Void Bill / निरस्त करें")
+                    Text(LocaleStrings.get("yes_void", lang))
                 }
             },
             dismissButton = {
